@@ -15,8 +15,8 @@ const anthropic = new Anthropic({
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const PRICES = {
-  single: "price_1TFQXyLy1OBajEep3NdGiR8e",
-  monthly: "price_1TFQZKLy1OBajEep4KYXkbB2",
+  single: "price_1TFRLSLy1OBajEepFyCn9wYa",
+  monthly: "price_1TFRLmLy1OBajEepNvdsIWUE",
 };
 
 /* ── Generate Letter ── */
