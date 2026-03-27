@@ -400,19 +400,20 @@
         <span style="font-size:52px">💌</span>
         <h2 style="font-size:28px;font-weight:600;margin:14px 0 6px">You've Used Your Free Letters</h2>
         <p style="color:#8B7E6E;font-style:italic;font-size:16px;max-width:400px;margin:0 auto 28px">Upgrade to keep writing beautiful letters.</p>
+        <div id="paywall-error" class="error-box" style="display:none;max-width:400px;margin:0 auto 16px"></div>
         <div class="pricing-row">
           <div class="price-card single">
             <div class="price-label" style="color:#9B8E7E">Single Letter</div>
             <div class="price-amount">$2.99</div>
             <div class="price-period" style="color:#8B7E6E">one-time</div>
-            <button class="btn-secondary" style="margin-top:14px;width:100%">Buy Letter</button>
+            <button id="buy-single-btn" class="btn-secondary" style="margin-top:14px;width:100%" onclick="checkout('single')">Buy Letter</button>
           </div>
           <div class="price-card unlimited">
             <div class="best-value">Best Value</div>
             <div class="price-label" style="opacity:0.8">Unlimited</div>
             <div class="price-amount">$7.99</div>
             <div class="price-period" style="opacity:0.8">per month</div>
-            <button class="btn-secondary" style="margin-top:14px;width:100%;border-color:rgba(255,255,255,0.4);color:#fff">Subscribe</button>
+            <button id="buy-monthly-btn" class="btn-secondary" style="margin-top:14px;width:100%;border-color:rgba(255,255,255,0.4);color:#fff" onclick="checkout('monthly')">Subscribe</button>
           </div>
         </div>
         <button class="back-btn" onclick="goHome()">← Back to home</button>
@@ -575,10 +576,17 @@ function goHome() {
 
 /* ── BADGES ──────────────────────────────────── */
 function updateBadges() {
-  const text = usesRemaining > 0
-    ? `${usesRemaining} free letter${usesRemaining !== 1 ? "s" : ""} remaining`
-    : "Free letters used — Upgrade for unlimited";
-  const cls = usesRemaining > 0 ? "badge ok" : "badge out";
+  let text, cls;
+  if (usesRemaining >= 9999) {
+    text = "✨ Unlimited letters";
+    cls = "badge ok";
+  } else if (usesRemaining > 0) {
+    text = `${usesRemaining} free letter${usesRemaining !== 1 ? "s" : ""} remaining`;
+    cls = "badge ok";
+  } else {
+    text = "Free letters used — Upgrade for unlimited";
+    cls = "badge out";
+  }
   document.querySelectorAll("[id^='badge-']").forEach(el => {
     el.textContent = text;
     el.className = cls;
@@ -720,7 +728,73 @@ function printLetter() {
   setTimeout(() => w.print(), 500);
 }
 
+/* ── STRIPE CHECKOUT ──────────────────────────── */
+async function checkout(plan) {
+  const btn = document.getElementById(plan === "single" ? "buy-single-btn" : "buy-monthly-btn");
+  const origText = btn.textContent;
+  btn.textContent = "Loading...";
+  btn.disabled = true;
+
+  const errorBox = document.getElementById("paywall-error");
+  errorBox.style.display = "none";
+
+  try {
+    const res = await fetch("/api/checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plan }),
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || "Checkout failed");
+    }
+
+    const data = await res.json();
+    if (data.url) {
+      window.location.href = data.url;
+    } else {
+      throw new Error("No checkout URL returned");
+    }
+  } catch (err) {
+    console.error("Checkout error:", err);
+    errorBox.textContent = "Something went wrong. Please try again.";
+    errorBox.style.display = "block";
+    btn.textContent = origText;
+    btn.disabled = false;
+  }
+}
+
+/* ── HANDLE RETURN FROM STRIPE ───────────────── */
+function handlePaymentReturn() {
+  const params = new URLSearchParams(window.location.search);
+
+  if (params.get("paid") === "single") {
+    // Single letter purchase — give them 1 more letter
+    setUsesRemaining(usesRemaining + 1);
+    updateBadges();
+    // Clean URL
+    window.history.replaceState({}, "", window.location.pathname);
+    // Show a success message
+    setTimeout(() => alert("Payment successful! You have 1 letter ready to write."), 300);
+  }
+
+  if (params.get("paid") === "monthly") {
+    // Subscription — give them unlimited (set to large number)
+    setUsesRemaining(9999);
+    updateBadges();
+    try { localStorage.setItem("hf_plan", "monthly"); } catch(e) {}
+    window.history.replaceState({}, "", window.location.pathname);
+    setTimeout(() => alert("Subscription active! You now have unlimited letters."), 300);
+  }
+
+  if (params.get("canceled") === "true") {
+    window.history.replaceState({}, "", window.location.pathname);
+  }
+}
+
 /* ── GO ───────────────────────────────────────── */
+handlePaymentReturn();
 init();
 </script>
 </body>

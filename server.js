@@ -1,6 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const Anthropic = require("@anthropic-ai/sdk").default;
+const Stripe = require("stripe");
 const path = require("path");
 
 const app = express();
@@ -11,6 +12,14 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+const PRICES = {
+  single: "price_1TFQXyLy1OBajEep3NdGiR8e",
+  monthly: "price_1TFQZKLy1OBajEep4KYXkbB2",
+};
+
+/* ── Generate Letter ── */
 app.post("/api/generate", async (req, res) => {
   const { occasion, details, tone } = req.body;
 
@@ -51,6 +60,30 @@ Rules:
   } catch (err) {
     console.error("Anthropic API error:", err.message);
     res.status(500).json({ error: "Failed to generate letter. Please try again." });
+  }
+});
+
+/* ── Stripe Checkout ── */
+app.post("/api/checkout", async (req, res) => {
+  const { plan } = req.body;
+
+  if (!plan || !PRICES[plan]) {
+    return res.status(400).json({ error: "Invalid plan." });
+  }
+
+  try {
+    const session = await stripe.checkout.sessions.create({
+      mode: plan === "monthly" ? "subscription" : "payment",
+      payment_method_types: ["card"],
+      line_items: [{ price: PRICES[plan], quantity: 1 }],
+      success_url: `${req.headers.origin || "http://localhost:3000"}?paid=${plan}`,
+      cancel_url: `${req.headers.origin || "http://localhost:3000"}?canceled=true`,
+    });
+
+    res.json({ url: session.url });
+  } catch (err) {
+    console.error("Stripe error:", err.message);
+    res.status(500).json({ error: "Failed to create checkout session." });
   }
 });
 
